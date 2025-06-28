@@ -12,10 +12,10 @@ import (
 	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/schema"
 	"github.com/tmc/langchaingo/vectorstores"
-	"github.com/weaviate/weaviate-go-client/v4/weaviate"
-	"github.com/weaviate/weaviate-go-client/v4/weaviate/auth"
-	"github.com/weaviate/weaviate-go-client/v4/weaviate/filters"
-	"github.com/weaviate/weaviate-go-client/v4/weaviate/graphql"
+	"github.com/weaviate/weaviate-go-client/v5/weaviate"
+	"github.com/weaviate/weaviate-go-client/v5/weaviate/auth"
+	"github.com/weaviate/weaviate-go-client/v5/weaviate/filters"
+	"github.com/weaviate/weaviate-go-client/v5/weaviate/graphql"
 	"github.com/weaviate/weaviate/entities/models"
 )
 
@@ -75,7 +75,7 @@ func New(opts ...Option) (Store, error) {
 	if s.apiKey != nil {
 		headers["Authorization"] = fmt.Sprintf("Bearer %s", *s.apiKey)
 	}
-	s.client = weaviate.New(weaviate.Config{
+	s.client, err = weaviate.NewClient(weaviate.Config{
 		Scheme:           s.scheme,
 		Host:             s.host,
 		Headers:          headers,
@@ -83,7 +83,7 @@ func New(opts ...Option) (Store, error) {
 		ConnectionClient: s.connectionClient,
 	})
 
-	return s, nil
+	return s, err
 }
 
 // AddDocuments creates vector embeddings from the documents using the embedder
@@ -232,10 +232,11 @@ func (s Store) parseDocumentsByGraphQLResponse(res *models.GraphQLResponse) ([]s
 		return nil, ErrEmptyResponse
 	}
 	items, ok := data.([]any)
-	if !ok || len(items) == 0 {
-		return nil, ErrEmptyResponse
-	}
+
 	docs := make([]schema.Document, 0, len(items))
+	if !ok || len(items) == 0 {
+		return docs, nil
+	}
 	for _, item := range items {
 		itemMap, ok := item.(map[string]any)
 		if !ok {

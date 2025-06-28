@@ -10,7 +10,10 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/tmc/langchaingo/httputil"
 )
 
 var (
@@ -26,6 +29,7 @@ type Client struct {
 	apiKey      string
 	secretKey   string
 	accessToken string
+	mu          sync.RWMutex
 	httpClient  Doer
 	Model       string
 	ModelPath   ModelPath
@@ -140,7 +144,7 @@ func WithAccessToken(accessToken string) Option {
 // New returns a new ERNIE client.
 func New(opts ...Option) (*Client, error) {
 	c := &Client{
-		httpClient: http.DefaultClient,
+		httpClient: httputil.DefaultClient,
 	}
 
 	for _, opt := range opts {
@@ -175,7 +179,9 @@ func autoRefresh(c *Client) error {
 				time.Sleep(tryPeriod * time.Minute) // try
 				continue
 			}
+			c.mu.Lock()
 			c.accessToken = authResp.AccessToken
+			c.mu.Unlock()
 			time.Sleep(10 * 24 * time.Hour)
 		}
 	}()
@@ -188,8 +194,11 @@ func (c *Client) CreateCompletion(ctx context.Context, modelPath ModelPath, r *C
 		modelPath = DefaultCompletionModelPath
 	}
 
+	c.mu.RLock()
+	accessToken := c.accessToken
+	c.mu.RUnlock()
 	url := "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/" + string(modelPath) +
-		"?access_token=" + c.accessToken
+		"?access_token=" + accessToken
 	body, e := json.Marshal(r)
 	if e != nil {
 		return nil, e
@@ -219,8 +228,11 @@ func (c *Client) CreateCompletion(ctx context.Context, modelPath ModelPath, r *C
 
 // CreateEmbedding use ernie Embedding-V1.
 func (c *Client) CreateEmbedding(ctx context.Context, texts []string) (*EmbeddingResponse, error) {
+	c.mu.RLock()
+	accessToken := c.accessToken
+	c.mu.RUnlock()
 	url := "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/embeddings/embedding-v1?access_token=" +
-		c.accessToken
+		accessToken
 
 	payload := make(map[string]any)
 	payload["input"] = texts
@@ -346,8 +358,11 @@ func (c *Client) buildURL(modelpath ModelPath) string {
 
 	// ernie example url:
 	// /wenxinworkshop/chat/eb-instant
+	c.mu.RLock()
+	accessToken := c.accessToken
+	c.mu.RUnlock()
 	return fmt.Sprintf("%s/wenxinworkshop/chat/%s?access_token=%s",
-		baseURL, modelpath, c.accessToken,
+		baseURL, modelpath, accessToken,
 	)
 }
 
